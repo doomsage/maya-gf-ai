@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { FloatingHearts } from "@/components/maya/FloatingHearts";
 import { ChatHeader } from "@/components/maya/ChatHeader";
-import { ChatBubble, Message } from "@/components/maya/ChatBubble";
+import { ChatBubble } from "@/components/maya/ChatBubble";
 import { ChatInput } from "@/components/maya/ChatInput";
 import { VoiceCallOverlay } from "@/components/maya/VoiceCallOverlay";
 import { TypingIndicator } from "@/components/maya/TypingIndicator";
@@ -11,7 +11,6 @@ import { useMayaChat } from "@/hooks/useMayaChat";
 
 const Index = () => {
   const [isCallOpen, setIsCallOpen] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { mood, updateMoodFromMessage } = useMayaMood();
@@ -31,19 +30,6 @@ const Index = () => {
       updateMoodFromMessage(latestMayaMessage.content);
     }
   }, [messages, updateMoodFromMessage]);
-
-  // Call duration timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isCallOpen) {
-      interval = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      setCallDuration(0);
-    }
-    return () => clearInterval(interval);
-  }, [isCallOpen]);
 
   const handleSendMessage = (content: string) => {
     sendMessage(content);
@@ -95,11 +81,6 @@ const Index = () => {
         isOpen={isCallOpen}
         onClose={() => setIsCallOpen(false)}
         mood={mood}
-        isSpeaking={false}
-        isListening={true}
-        callDuration={callDuration}
-        userTranscript=""
-        mayaTranscript=""
       />
     </div>
   );
