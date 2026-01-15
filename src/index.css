@@ -1,96 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Dancing+Script:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Maya's Romantic Soulmate Design System - All colors in HSL */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Core romantic palette */
+    --background: 347 100% 97%;
+    --foreground: 347 50% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 347 50% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 347 50% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Rose - Primary romantic color */
+    --primary: 348 100% 65%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Soft blush pink */
+    --secondary: 347 100% 95%;
+    --secondary-foreground: 347 50% 25%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 347 30% 92%;
+    --muted-foreground: 347 20% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent - deeper rose */
+    --accent: 348 80% 55%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 347 40% 88%;
+    --input: 347 40% 88%;
+    --ring: 348 100% 65%;
 
-    --radius: 0.5rem;
+    --radius: 1rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Chat specific */
+    --chat-user: 142 70% 45%;
+    --chat-user-foreground: 0 0% 100%;
+    --chat-maya: 0 0% 100%;
+    --chat-maya-foreground: 347 50% 15%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* Mood colors */
+    --mood-loving: 348 100% 65%;
+    --mood-angry: 0 70% 55%;
+    --mood-jealous: 280 70% 50%;
+    --mood-childish: 45 100% 60%;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Gradients */
+    --gradient-romantic: linear-gradient(135deg, hsl(348 100% 65%), hsl(320 80% 70%));
+    --gradient-dreamy: linear-gradient(180deg, hsl(347 100% 97%), hsl(320 60% 95%));
+    --gradient-call: linear-gradient(135deg, hsl(348 100% 25%), hsl(280 50% 25%));
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    /* Shadows */
+    --shadow-romantic: 0 8px 32px -8px hsl(348 100% 65% / 0.35);
+    --shadow-soft: 0 4px 16px -4px hsl(347 50% 15% / 0.1);
+    --shadow-glow: 0 0 40px hsl(348 100% 65% / 0.4);
 
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar */
+    --sidebar-background: 347 100% 97%;
+    --sidebar-foreground: 347 50% 25%;
+    --sidebar-primary: 348 100% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 347 100% 95%;
+    --sidebar-accent-foreground: 347 50% 25%;
+    --sidebar-border: 347 40% 88%;
+    --sidebar-ring: 348 100% 65%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 347 30% 8%;
+    --foreground: 347 20% 95%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 347 25% 12%;
+    --card-foreground: 347 20% 95%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 347 25% 12%;
+    --popover-foreground: 347 20% 95%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 348 100% 65%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 347 25% 18%;
+    --secondary-foreground: 347 20% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 347 20% 20%;
+    --muted-foreground: 347 15% 60%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 348 80% 55%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --border: 347 20% 20%;
+    --input: 347 20% 20%;
+    --ring: 348 100% 65%;
+
+    --chat-user: 142 60% 35%;
+    --chat-user-foreground: 0 0% 100%;
+    --chat-maya: 347 25% 15%;
+    --chat-maya-foreground: 347 20% 95%;
+
+    --gradient-romantic: linear-gradient(135deg, hsl(348 80% 45%), hsl(320 60% 50%));
+    --gradient-dreamy: linear-gradient(180deg, hsl(347 30% 8%), hsl(320 30% 12%));
+
+    --sidebar-background: 347 25% 10%;
+    --sidebar-foreground: 347 20% 90%;
+    --sidebar-primary: 348 100% 65%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 347 25% 15%;
+    --sidebar-accent-foreground: 347 20% 90%;
+    --sidebar-border: 347 20% 18%;
+    --sidebar-ring: 348 100% 65%;
   }
 }
 
@@ -100,6 +129,112 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Poppins', sans-serif;
   }
+
+  .font-romantic {
+    font-family: 'Dancing Script', cursive;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-xl border border-white/50 shadow-lg;
+  }
+
+  .chat-bubble-user {
+    @apply bg-[hsl(var(--chat-user))] text-[hsl(var(--chat-user-foreground))] rounded-2xl rounded-br-md px-4 py-2.5;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .chat-bubble-maya {
+    @apply bg-[hsl(var(--chat-maya))] text-[hsl(var(--chat-maya-foreground))] rounded-2xl rounded-bl-md px-4 py-2.5;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .romantic-gradient {
+    background: var(--gradient-romantic);
+  }
+
+  .dreamy-gradient {
+    background: var(--gradient-dreamy);
+  }
+
+  .call-gradient {
+    background: var(--gradient-call);
+  }
+
+  .glow-ring {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .mood-glow-loving {
+    box-shadow: 0 0 60px hsl(var(--mood-loving) / 0.5);
+  }
+
+  .mood-glow-angry {
+    box-shadow: 0 0 60px hsl(var(--mood-angry) / 0.5);
+  }
+
+  .mood-glow-jealous {
+    box-shadow: 0 0 60px hsl(var(--mood-jealous) / 0.5);
+  }
+
+  .mood-glow-childish {
+    box-shadow: 0 0 60px hsl(var(--mood-childish) / 0.5);
+  }
+}
+
+@layer utilities {
+  .text-gradient-romantic {
+    background: var(--gradient-romantic);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+/* Floating hearts animation */
+@keyframes float-heart {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-20px) rotate(10deg);
+    opacity: 0.9;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 40px hsl(348 100% 65% / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 80px hsl(348 100% 65% / 0.6);
+  }
+}
+
+@keyframes audio-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+.animate-float-heart {
+  animation: float-heart 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-audio-pulse {
+  animation: audio-pulse 0.5s ease-in-out infinite;
 }
