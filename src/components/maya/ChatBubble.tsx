@@ -6,6 +6,7 @@ export interface Message {
   content: string;
   sender: "user" | "maya";
   timestamp: Date;
+  imageUrl?: string;
 }
 
 interface ChatBubbleProps {
@@ -28,9 +29,27 @@ export const ChatBubble = ({ message }: ChatBubbleProps) => {
           isUser ? "chat-bubble-user" : "chat-bubble-maya"
         )}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-          {message.content}
-        </p>
+        {/* Image if present */}
+        {message.imageUrl && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mb-2 rounded-lg overflow-hidden"
+          >
+            <img
+              src={message.imageUrl}
+              alt="Maya's selfie"
+              className="w-full max-w-[200px] rounded-lg"
+              loading="lazy"
+            />
+          </motion.div>
+        )}
+        
+        {message.content && (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {message.content}
+          </p>
+        )}
         <span
           className={cn(
             "text-[10px] mt-1 block text-right opacity-60",

@@ -7,6 +7,12 @@ interface UseVoiceCallOptions {
   onError: (error: string) => void;
 }
 
+// Get last 5 messages for voice context
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export const useVoiceCall = ({
   onUserTranscript,
   onMayaResponse,
@@ -16,14 +22,15 @@ export const useVoiceCall = ({
   const [isListening, setIsListening] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [isMayaSpeaking, setIsMayaSpeaking] = useState(false);
   
-  // Use any for recognition since types are defined globally
   const recognitionRef = useRef<any>(null);
-  const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const conversationRef = useRef<ChatMessage[]>([]);
+  const isSpeakingRef = useRef(false);
 
   // Initialize audio context and analyser for visualizer
   const initAudioContext = useCallback(async () => {
@@ -38,7 +45,6 @@ export const useVoiceCall = ({
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current);
       
-      // Start monitoring audio levels
       const updateLevel = () => {
         if (analyserRef.current) {
           const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
@@ -58,58 +64,100 @@ export const useVoiceCall = ({
     }
   }, [onError]);
 
-  // Initialize speech recognition
-  const initSpeechRecognition = useCallback(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  // Find a good female voice
+  const findFemaleVoice = useCallback(() => {
+    const voices = window.speechSynthesis.getVoices();
     
-    if (!SpeechRecognitionAPI) {
-      onError("Speech recognition not supported in this browser.");
-      return null;
+    // Priority order for natural female voices
+    const preferredVoices = [
+      "Google हिन्दी", // Hindi
+      "Lekha", // Indian English
+      "Veena", // Indian
+      "Samantha", // Natural sounding
+      "Karen", // Australian, soft
+      "Moira", // Irish, pleasant
+      "Tessa", // South African
+      "Victoria", // Natural US
+    ];
+    
+    for (const name of preferredVoices) {
+      const voice = voices.find(v => v.name.includes(name));
+      if (voice) return voice;
     }
+    
+    // Fallback: any female voice or first available
+    const femaleVoice = voices.find(v => 
+      v.name.toLowerCase().includes("female") || 
+      v.name.toLowerCase().includes("woman")
+    );
+    
+    return femaleVoice || voices.find(v => v.lang.includes("en")) || voices[0];
+  }, []);
 
-    const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "hi-IN"; // Hindi for Hinglish support
-
-    recognition.onresult = (event) => {
-      const lastResult = event.results[event.results.length - 1];
-      const transcript = lastResult[0].transcript;
+  // Speak Maya's response
+  const speakMayaResponse = useCallback((text: string): Promise<void> => {
+    return new Promise((resolve) => {
+      window.speechSynthesis.cancel();
       
-      if (lastResult.isFinal) {
-        onUserTranscript(transcript);
-        // Send to Maya
-        sendToMaya(transcript);
+      // Clean text for speaking
+      const cleanText = text
+        .replace(/\[SEND_PHOTO\]/g, "")
+        .replace(/💕|😊|🙄|😤|😔|❤️|😏|🥺/g, "")
+        .trim();
+      
+      if (!cleanText) {
+        resolve();
+        return;
       }
-    };
-
-    recognition.onerror = (event) => {
-      console.error("Speech recognition error:", event.error);
-      if (event.error !== "no-speech") {
-        onError(`Speech recognition error: ${event.error}`);
+      
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = "hi-IN";
+      utterance.rate = 1.05; // Slightly faster, more natural
+      utterance.pitch = 1.15; // Higher for feminine
+      utterance.volume = 1;
+      
+      const voice = findFemaleVoice();
+      if (voice) {
+        utterance.voice = voice;
       }
-    };
 
-    recognition.onend = () => {
-      // Restart if still connected
-      if (isConnected && recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch (e) {
-          // Already started
-        }
-      }
-    };
+      utterance.onstart = () => {
+        isSpeakingRef.current = true;
+        setIsMayaSpeaking(true);
+        onMayaSpeakingChange(true);
+      };
 
-    return recognition;
-  }, [onUserTranscript, onError, isConnected]);
+      utterance.onend = () => {
+        isSpeakingRef.current = false;
+        setIsMayaSpeaking(false);
+        onMayaSpeakingChange(false);
+        resolve();
+      };
 
-  // Send message to Maya and speak response
+      utterance.onerror = () => {
+        isSpeakingRef.current = false;
+        setIsMayaSpeaking(false);
+        onMayaSpeakingChange(false);
+        resolve();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    });
+  }, [onMayaSpeakingChange, findFemaleVoice]);
+
+  // Send to Maya
   const sendToMaya = useCallback(async (text: string) => {
     try {
       setIsListening(false);
       
+      // Add to conversation history
+      conversationRef.current.push({ role: "user", content: text });
+      
+      // Keep last 5 exchanges for context
+      if (conversationRef.current.length > 10) {
+        conversationRef.current = conversationRef.current.slice(-10);
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/maya-chat`,
         {
@@ -119,7 +167,7 @@ export const useVoiceCall = ({
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({
-            messages: [{ role: "user", content: text }],
+            messages: conversationRef.current,
           }),
         }
       );
@@ -165,65 +213,88 @@ export const useVoiceCall = ({
       }
 
       if (fullResponse) {
-        onMayaResponse(fullResponse);
+        // Add to conversation
+        conversationRef.current.push({ role: "assistant", content: fullResponse });
+        
+        onMayaResponse(fullResponse.replace(/\[SEND_PHOTO\]/g, "").trim());
         await speakMayaResponse(fullResponse);
       }
       
       setIsListening(true);
     } catch (error) {
       console.error("Maya call error:", error);
-      onError("Connection error. Maya couldn't respond.");
+      onError("Connection issue. Try again.");
       setIsListening(true);
     }
-  }, [onMayaResponse, onError]);
+  }, [onMayaResponse, onError, speakMayaResponse]);
 
-  // Speak Maya's response using TTS
-  const speakMayaResponse = useCallback((text: string): Promise<void> => {
-    return new Promise((resolve) => {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
+  // Initialize speech recognition
+  const initSpeechRecognition = useCallback(() => {
+    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognitionAPI) {
+      onError("Speech recognition not supported.");
+      return null;
+    }
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "hi-IN";
+
+    let finalTranscript = "";
+
+    recognition.onresult = (event: any) => {
+      let interimTranscript = "";
       
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "hi-IN";
-      utterance.rate = 1.0;
-      utterance.pitch = 1.1; // Slightly higher for feminine voice
-      
-      // Try to find a Hindi female voice
-      const voices = window.speechSynthesis.getVoices();
-      const hindiVoice = voices.find(
-        (v) => v.lang.includes("hi") && v.name.toLowerCase().includes("female")
-      );
-      const femaleVoice = voices.find(
-        (v) => v.name.toLowerCase().includes("female") || v.name.includes("Samantha")
-      );
-      
-      if (hindiVoice) {
-        utterance.voice = hindiVoice;
-      } else if (femaleVoice) {
-        utterance.voice = femaleVoice;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        
+        if (event.results[i].isFinal) {
+          finalTranscript = transcript;
+          
+          // Interrupt Maya if speaking
+          if (isSpeakingRef.current) {
+            window.speechSynthesis.cancel();
+            isSpeakingRef.current = false;
+            setIsMayaSpeaking(false);
+            onMayaSpeakingChange(false);
+          }
+          
+          onUserTranscript(finalTranscript);
+          sendToMaya(finalTranscript);
+          finalTranscript = "";
+        } else {
+          interimTranscript += transcript;
+        }
       }
+    };
 
-      utterance.onstart = () => {
-        onMayaSpeakingChange(true);
-      };
+    recognition.onerror = (event: any) => {
+      console.error("Speech error:", event.error);
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        onError(`Speech error: ${event.error}`);
+      }
+    };
 
-      utterance.onend = () => {
-        onMayaSpeakingChange(false);
-        resolve();
-      };
+    recognition.onend = () => {
+      if (isConnected && recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          // Already running
+        }
+      }
+    };
 
-      utterance.onerror = () => {
-        onMayaSpeakingChange(false);
-        resolve();
-      };
+    return recognition;
+  }, [onUserTranscript, onError, isConnected, onMayaSpeakingChange, sendToMaya]);
 
-      synthRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-    });
-  }, [onMayaSpeakingChange]);
-
-  // Start the call
+  // Start call
   const startCall = useCallback(async () => {
+    // Load voices first
+    window.speechSynthesis.getVoices();
+    
     const audioReady = await initAudioContext();
     if (!audioReady) return;
 
@@ -231,34 +302,32 @@ export const useVoiceCall = ({
     if (!recognition) return;
 
     recognitionRef.current = recognition;
+    conversationRef.current = [];
     
     try {
       recognition.start();
       setIsConnected(true);
       setIsListening(true);
       
-      // Maya greets on call start
-      const greeting = "Hello janu! Achha laga call karke. Bolo, kya chal raha hai? 💕";
+      // Short greeting
+      const greeting = "Haan bolo janu! 💕";
       onMayaResponse(greeting);
       await speakMayaResponse(greeting);
     } catch (error) {
-      console.error("Failed to start call:", error);
-      onError("Failed to start the call.");
+      console.error("Failed to start:", error);
+      onError("Failed to start call.");
     }
   }, [initAudioContext, initSpeechRecognition, onMayaResponse, speakMayaResponse, onError]);
 
-  // End the call
+  // End call
   const endCall = useCallback(() => {
-    // Stop speech recognition
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
 
-    // Stop speech synthesis
     window.speechSynthesis.cancel();
 
-    // Stop audio context
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
@@ -271,35 +340,46 @@ export const useVoiceCall = ({
       audioContextRef.current.close();
     }
 
+    conversationRef.current = [];
     setIsConnected(false);
     setIsListening(false);
+    setIsMayaSpeaking(false);
     setAudioLevel(0);
   }, []);
 
-  // Interrupt Maya's speech
+  // Interrupt Maya
   const interruptMaya = useCallback(() => {
     window.speechSynthesis.cancel();
+    isSpeakingRef.current = false;
+    setIsMayaSpeaking(false);
     onMayaSpeakingChange(false);
   }, [onMayaSpeakingChange]);
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       endCall();
     };
   }, [endCall]);
 
-  // Load voices
+  // Load voices on mount
   useEffect(() => {
-    window.speechSynthesis.getVoices();
-    window.speechSynthesis.onvoiceschanged = () => {
+    const loadVoices = () => {
       window.speechSynthesis.getVoices();
+    };
+    
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
     };
   }, []);
 
   return {
     isConnected,
     isListening,
+    isMayaSpeaking,
     audioLevel,
     startCall,
     endCall,
