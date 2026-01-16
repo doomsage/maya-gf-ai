@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 import { Message } from "@/components/maya/ChatBubble";
-import { supabase } from "@/integrations/supabase/client";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -11,12 +10,37 @@ export const useMayaChat = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
-      content: "Miss me? 💕 Kahan gayab the itni der?",
+      content: "Hii 💕 Kahan the?",
       sender: "maya",
       timestamp: new Date(),
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Generate Maya's photo
+  const generatePhoto = useCallback(async (mood: string = "happy"): Promise<string | null> => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/maya-photo`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ mood }),
+        }
+      );
+
+      if (!response.ok) return null;
+      
+      const data = await response.json();
+      return data.imageUrl;
+    } catch (error) {
+      console.error("Photo generation error:", error);
+      return null;
+    }
+  }, []);
 
   const sendMessage = useCallback(async (content: string) => {
     const userMessage: Message = {
@@ -30,8 +54,9 @@ export const useMayaChat = () => {
     setIsLoading(true);
 
     try {
-      // Convert messages to API format
-      const chatHistory: ChatMessage[] = messages.map((msg) => ({
+      // Keep last 10 messages for context (memory)
+      const recentMessages = messages.slice(-10);
+      const chatHistory: ChatMessage[] = recentMessages.map((msg) => ({
         role: msg.sender === "maya" ? "assistant" : "user",
         content: msg.content,
       }));
@@ -94,24 +119,41 @@ export const useMayaChat = () => {
 
             try {
               const parsed = JSON.parse(jsonStr);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                mayaResponse += content;
+              const contentDelta = parsed.choices?.[0]?.delta?.content;
+              if (contentDelta) {
+                mayaResponse += contentDelta;
+                // Remove [SEND_PHOTO] from displayed text
+                const displayText = mayaResponse.replace(/\[SEND_PHOTO\]/g, "").trim();
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === mayaMessageId
-                      ? { ...msg, content: mayaResponse }
+                      ? { ...msg, content: displayText }
                       : msg
                   )
                 );
               }
             } catch {
-              // Incomplete JSON, put back and wait
               buffer = line + "\n" + buffer;
               break;
             }
           }
         }
+      }
+
+      // Check if Maya wants to send a photo
+      if (mayaResponse.includes("[SEND_PHOTO]")) {
+        const cleanText = mayaResponse.replace(/\[SEND_PHOTO\]/g, "").trim();
+        
+        // Generate photo
+        const imageUrl = await generatePhoto("happy");
+        
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === mayaMessageId
+              ? { ...msg, content: cleanText, imageUrl: imageUrl || undefined }
+              : msg
+          )
+        );
       }
     } catch (error) {
       console.error("Chat error:", error);
@@ -119,7 +161,7 @@ export const useMayaChat = () => {
         ...prev,
         {
           id: (Date.now() + 1).toString(),
-          content: "Yaar network issue hai lagta hai... Phir se try karo na? 😔",
+          content: "Network issue hai yaar... Phir se try karo 😔",
           sender: "maya",
           timestamp: new Date(),
         },
@@ -127,7 +169,7 @@ export const useMayaChat = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [messages]);
+  }, [messages, generatePhoto]);
 
   return { messages, sendMessage, isLoading };
 };
