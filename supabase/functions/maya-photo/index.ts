@@ -24,7 +24,7 @@ serve(async (req) => {
       loving: "soft romantic gaze, gentle loving smile, dreamy eyes with affection",
       playful: "mischievous playful smile, winking one eye, fun teasing expression",
       shy: "blushing pink cheeks, looking down slightly with sweet shy smile",
-      angry: "pouting lips, slightly furrowed brows, cute annoyed expression, arms crossed",
+      angry: "pouting lips, slightly furrowed brows, cute annoyed expression, shouting, arms crossed",
       jealous: "raised skeptical eyebrow, suspicious narrow eyes, pouty dramatic expression",
       nakhre: "dramatic eye roll, hand on hip, sassy annoyed but cute expression",
       sad: "slightly teary eyes, pouty sad lips, looking away dramatically",
