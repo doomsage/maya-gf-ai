@@ -144,8 +144,23 @@ export const useMayaChat = () => {
       if (mayaResponse.includes("[SEND_PHOTO]")) {
         const cleanText = mayaResponse.replace(/\[SEND_PHOTO\]/g, "").trim();
         
-        // Generate photo
-        const imageUrl = await generatePhoto("happy");
+        // Detect mood for photo
+        const lowerResponse = mayaResponse.toLowerCase();
+        let photoMood = "happy";
+        if (lowerResponse.includes("😤") || lowerResponse.includes("angry") || lowerResponse.includes("gussa")) {
+          photoMood = "angry";
+        } else if (lowerResponse.includes("🙄") || lowerResponse.includes("jealous") || lowerResponse.includes("shaq")) {
+          photoMood = "jealous";
+        } else if (lowerResponse.includes("nakhre") || lowerResponse.includes("dramatic")) {
+          photoMood = "nakhre";
+        } else if (lowerResponse.includes("💕") || lowerResponse.includes("love") || lowerResponse.includes("pyaar")) {
+          photoMood = "loving";
+        } else if (lowerResponse.includes("shy") || lowerResponse.includes("blush")) {
+          photoMood = "shy";
+        }
+        
+        // Generate photo with detected mood
+        const imageUrl = await generatePhoto(photoMood);
         
         setMessages((prev) =>
           prev.map((msg) =>
