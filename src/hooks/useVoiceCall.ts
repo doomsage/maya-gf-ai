@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseVoiceCallOptions {
   onUserTranscript: (text: string) => void;
@@ -7,7 +7,6 @@ interface UseVoiceCallOptions {
   onError: (error: string) => void;
 }
 
-// Get last 5 messages for voice context
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -23,28 +22,63 @@ export const useVoiceCall = ({
   const [isConnected, setIsConnected] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [isMayaSpeaking, setIsMayaSpeaking] = useState(false);
-  
+
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const conversationRef = useRef<ChatMessage[]>([]);
-  const isSpeakingRef = useRef(false);
 
-  // Initialize audio context and analyser for visualizer
+  // Important: speech recognition callbacks often capture stale state.
+  const isConnectedRef = useRef(false);
+  const shouldListenRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const isSendingRef = useRef(false);
+
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+  }, [isConnected]);
+
+  const safeStartRecognition = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    if (!isConnectedRef.current) return;
+    if (!shouldListenRef.current) return;
+    if (isSendingRef.current) return;
+    if (isSpeakingRef.current) return;
+
+    try {
+      rec.start();
+      setIsListening(true);
+    } catch {
+      // Already started or not allowed to start yet
+    }
+  }, []);
+
+  const safeStopRecognition = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    try {
+      rec.stop();
+    } catch {
+      // ignore
+    }
+    setIsListening(false);
+  }, []);
+
   const initAudioContext = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      
+
       audioContextRef.current = new AudioContext();
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
-      
+
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current);
-      
+
       const updateLevel = () => {
         if (analyserRef.current) {
           const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
@@ -54,8 +88,8 @@ export const useVoiceCall = ({
         }
         animationFrameRef.current = requestAnimationFrame(updateLevel);
       };
+
       updateLevel();
-      
       return true;
     } catch (error) {
       console.error("Microphone access error:", error);
@@ -64,174 +98,165 @@ export const useVoiceCall = ({
     }
   }, [onError]);
 
-  // Find a good female voice
   const findFemaleVoice = useCallback(() => {
     const voices = window.speechSynthesis.getVoices();
-    
-    // Priority order for natural female voices
+
     const preferredVoices = [
-      "Google हिन्दी", // Hindi
-      "Lekha", // Indian English
-      "Veena", // Indian
-      "Samantha", // Natural sounding
-      "Karen", // Australian, soft
-      "Moira", // Irish, pleasant
-      "Tessa", // South African
-      "Victoria", // Natural US
+      "Google हिन्दी",
+      "Lekha",
+      "Veena",
+      "Samantha",
+      "Karen",
+      "Moira",
+      "Tessa",
+      "Victoria",
     ];
-    
+
     for (const name of preferredVoices) {
-      const voice = voices.find(v => v.name.includes(name));
+      const voice = voices.find((v) => v.name.includes(name));
       if (voice) return voice;
     }
-    
-    // Fallback: any female voice or first available
-    const femaleVoice = voices.find(v => 
-      v.name.toLowerCase().includes("female") || 
-      v.name.toLowerCase().includes("woman")
+
+    const femaleVoice = voices.find(
+      (v) => v.name.toLowerCase().includes("female") || v.name.toLowerCase().includes("woman")
     );
-    
-    return femaleVoice || voices.find(v => v.lang.includes("en")) || voices[0];
+
+    return femaleVoice || voices.find((v) => v.lang.includes("hi")) || voices[0];
   }, []);
 
-  // Speak Maya's response
-  const speakMayaResponse = useCallback((text: string): Promise<void> => {
-    return new Promise((resolve) => {
-      window.speechSynthesis.cancel();
-      
-      // Clean text for speaking
-      const cleanText = text
-        .replace(/\[SEND_PHOTO\]/g, "")
-        .replace(/💕|😊|🙄|😤|😔|❤️|😏|🥺/g, "")
-        .trim();
-      
-      if (!cleanText) {
-        resolve();
-        return;
-      }
-      
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = "hi-IN";
-      utterance.rate = 1.05; // Slightly faster, more natural
-      utterance.pitch = 1.15; // Higher for feminine
-      utterance.volume = 1;
-      
-      const voice = findFemaleVoice();
-      if (voice) {
-        utterance.voice = voice;
-      }
+  const speakMayaResponse = useCallback(
+    (text: string): Promise<void> => {
+      return new Promise((resolve) => {
+        window.speechSynthesis.cancel();
 
-      utterance.onstart = () => {
-        isSpeakingRef.current = true;
-        setIsMayaSpeaking(true);
-        onMayaSpeakingChange(true);
-      };
+        const cleanText = text
+          .replace(/\[SEND_PHOTO\]/g, "")
+          .replace(/💕|😊|🙄|😤|😔|❤️|😏|🥺|😒|💔|🤔|😢/g, "")
+          .trim();
 
-      utterance.onend = () => {
-        isSpeakingRef.current = false;
-        setIsMayaSpeaking(false);
-        onMayaSpeakingChange(false);
-        resolve();
-      };
+        if (!cleanText) {
+          resolve();
+          return;
+        }
 
-      utterance.onerror = () => {
-        isSpeakingRef.current = false;
-        setIsMayaSpeaking(false);
-        onMayaSpeakingChange(false);
-        resolve();
-      };
+        // Avoid Maya's TTS being picked up by recognition
+        safeStopRecognition();
 
-      window.speechSynthesis.speak(utterance);
-    });
-  }, [onMayaSpeakingChange, findFemaleVoice]);
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = "hi-IN";
+        utterance.rate = 1.05;
+        utterance.pitch = 1.1;
+        utterance.volume = 1;
 
-  // Send to Maya
-  const sendToMaya = useCallback(async (text: string) => {
-    try {
-      setIsListening(false);
-      
-      // Add to conversation history
-      conversationRef.current.push({ role: "user", content: text });
-      
-      // Keep last 5 exchanges for context
-      if (conversationRef.current.length > 10) {
-        conversationRef.current = conversationRef.current.slice(-10);
-      }
+        const voice = findFemaleVoice();
+        if (voice) utterance.voice = voice;
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/maya-chat`,
-        {
+        utterance.onstart = () => {
+          isSpeakingRef.current = true;
+          setIsMayaSpeaking(true);
+          onMayaSpeakingChange(true);
+        };
+
+        const finish = () => {
+          isSpeakingRef.current = false;
+          setIsMayaSpeaking(false);
+          onMayaSpeakingChange(false);
+          // Resume listening once she finishes speaking
+          setTimeout(() => safeStartRecognition(), 250);
+          resolve();
+        };
+
+        utterance.onend = finish;
+        utterance.onerror = finish;
+
+        window.speechSynthesis.speak(utterance);
+      });
+    },
+    [findFemaleVoice, onMayaSpeakingChange, safeStartRecognition, safeStopRecognition]
+  );
+
+  const sendToMaya = useCallback(
+    async (text: string) => {
+      try {
+        isSendingRef.current = true;
+        shouldListenRef.current = false;
+        safeStopRecognition();
+
+        conversationRef.current.push({ role: "user", content: text });
+        if (conversationRef.current.length > 10) {
+          conversationRef.current = conversationRef.current.slice(-10);
+        }
+
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/maya-chat`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({
-            messages: conversationRef.current,
-          }),
-        }
-      );
+          body: JSON.stringify({ messages: conversationRef.current }),
+        });
 
-      if (!response.ok) throw new Error("Failed to get response");
+        if (!response.ok) throw new Error("Failed to get response");
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullResponse = "";
-      let buffer = "";
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = "";
+        let buffer = "";
 
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
+            buffer += decoder.decode(value, { stream: true });
 
-          let newlineIndex: number;
-          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-            let line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
+            let newlineIndex: number;
+            while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+              let line = buffer.slice(0, newlineIndex);
+              buffer = buffer.slice(newlineIndex + 1);
 
-            if (line.endsWith("\r")) line = line.slice(0, -1);
-            if (line.startsWith(":") || line.trim() === "") continue;
-            if (!line.startsWith("data: ")) continue;
+              if (line.endsWith("\r")) line = line.slice(0, -1);
+              if (line.startsWith(":")) continue;
+              if (line.trim() === "") continue;
+              if (!line.startsWith("data: ")) continue;
 
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === "[DONE]") break;
+              const jsonStr = line.slice(6).trim();
+              if (jsonStr === "[DONE]") break;
 
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                fullResponse += content;
+              try {
+                const parsed = JSON.parse(jsonStr);
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) fullResponse += content;
+              } catch {
+                buffer = line + "\n" + buffer;
+                break;
               }
-            } catch {
-              buffer = line + "\n" + buffer;
-              break;
             }
           }
         }
-      }
 
-      if (fullResponse) {
-        // Add to conversation
-        conversationRef.current.push({ role: "assistant", content: fullResponse });
-        
-        onMayaResponse(fullResponse.replace(/\[SEND_PHOTO\]/g, "").trim());
-        await speakMayaResponse(fullResponse);
+        if (fullResponse) {
+          conversationRef.current.push({ role: "assistant", content: fullResponse });
+          const display = fullResponse.replace(/\[SEND_PHOTO\]/g, "").trim();
+          onMayaResponse(display);
+          await speakMayaResponse(fullResponse);
+        }
+      } catch (error) {
+        console.error("Maya call error:", error);
+        onError("Connection issue. Try again.");
+      } finally {
+        isSendingRef.current = false;
+        shouldListenRef.current = true;
+        setTimeout(() => safeStartRecognition(), 250);
       }
-      
-      setIsListening(true);
-    } catch (error) {
-      console.error("Maya call error:", error);
-      onError("Connection issue. Try again.");
-      setIsListening(true);
-    }
-  }, [onMayaResponse, onError, speakMayaResponse]);
+    },
+    [onError, onMayaResponse, safeStartRecognition, safeStopRecognition, speakMayaResponse]
+  );
 
-  // Initialize speech recognition
   const initSpeechRecognition = useCallback(() => {
-    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
+    const SpeechRecognitionAPI =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
     if (!SpeechRecognitionAPI) {
       onError("Speech recognition not supported.");
       return null;
@@ -242,59 +267,46 @@ export const useVoiceCall = ({
     recognition.interimResults = true;
     recognition.lang = "hi-IN";
 
-    let finalTranscript = "";
-
     recognition.onresult = (event: any) => {
-      let interimTranscript = "";
-      
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        
+        const transcript = event.results[i][0]?.transcript;
+        if (!transcript) continue;
+
         if (event.results[i].isFinal) {
-          finalTranscript = transcript;
-          
-          // Interrupt Maya if speaking
-          if (isSpeakingRef.current) {
-            window.speechSynthesis.cancel();
-            isSpeakingRef.current = false;
-            setIsMayaSpeaking(false);
-            onMayaSpeakingChange(false);
-          }
-          
-          onUserTranscript(finalTranscript);
-          sendToMaya(finalTranscript);
-          finalTranscript = "";
-        } else {
-          interimTranscript += transcript;
+          // User spoke a final phrase
+          const finalText = transcript.trim();
+          if (!finalText) continue;
+
+          onUserTranscript(finalText);
+          sendToMaya(finalText);
         }
       }
     };
 
     recognition.onerror = (event: any) => {
       console.error("Speech error:", event.error);
-      if (event.error !== "no-speech" && event.error !== "aborted") {
+
+      // Common transient errors: keep trying
+      const transient = new Set(["no-speech", "aborted", "audio-capture", "network"]);
+      if (!transient.has(event.error)) {
         onError(`Speech error: ${event.error}`);
       }
+
+      setTimeout(() => safeStartRecognition(), 400);
     };
 
     recognition.onend = () => {
-      if (isConnected && recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch (e) {
-          // Already running
-        }
-      }
+      // Critical fix: restart based on refs (not stale closure state)
+      setTimeout(() => safeStartRecognition(), 350);
     };
 
     return recognition;
-  }, [onUserTranscript, onError, isConnected, onMayaSpeakingChange, sendToMaya]);
+  }, [onError, onUserTranscript, safeStartRecognition, sendToMaya]);
 
-  // Start call
   const startCall = useCallback(async () => {
-    // Load voices first
+    // Ensure voices are available
     window.speechSynthesis.getVoices();
-    
+
     const audioReady = await initAudioContext();
     if (!audioReady) return;
 
@@ -303,26 +315,35 @@ export const useVoiceCall = ({
 
     recognitionRef.current = recognition;
     conversationRef.current = [];
-    
+
+    setIsConnected(true);
+    isConnectedRef.current = true;
+
+    shouldListenRef.current = true;
+
     try {
-      recognition.start();
-      setIsConnected(true);
-      setIsListening(true);
-      
-      // Short greeting
-      const greeting = "Haan bolo janu! 💕";
+      safeStartRecognition();
+
+      // Greeting
+      const greeting = "Haan bolo jaanu. 💕";
       onMayaResponse(greeting);
       await speakMayaResponse(greeting);
     } catch (error) {
       console.error("Failed to start:", error);
       onError("Failed to start call.");
     }
-  }, [initAudioContext, initSpeechRecognition, onMayaResponse, speakMayaResponse, onError]);
+  }, [initAudioContext, initSpeechRecognition, onError, onMayaResponse, safeStartRecognition, speakMayaResponse]);
 
-  // End call
   const endCall = useCallback(() => {
+    shouldListenRef.current = false;
+    isConnectedRef.current = false;
+
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
       recognitionRef.current = null;
     }
 
@@ -330,14 +351,17 @@ export const useVoiceCall = ({
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
-    
+
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
-    
+
     if (audioContextRef.current) {
       audioContextRef.current.close();
+      audioContextRef.current = null;
     }
 
     conversationRef.current = [];
@@ -347,30 +371,28 @@ export const useVoiceCall = ({
     setAudioLevel(0);
   }, []);
 
-  // Interrupt Maya
   const interruptMaya = useCallback(() => {
     window.speechSynthesis.cancel();
     isSpeakingRef.current = false;
     setIsMayaSpeaking(false);
     onMayaSpeakingChange(false);
-  }, [onMayaSpeakingChange]);
+    setTimeout(() => safeStartRecognition(), 200);
+  }, [onMayaSpeakingChange, safeStartRecognition]);
 
-  // Cleanup
   useEffect(() => {
     return () => {
       endCall();
     };
   }, [endCall]);
 
-  // Load voices on mount
   useEffect(() => {
     const loadVoices = () => {
       window.speechSynthesis.getVoices();
     };
-    
+
     loadVoices();
     window.speechSynthesis.onvoiceschanged = loadVoices;
-    
+
     return () => {
       window.speechSynthesis.onvoiceschanged = null;
     };
