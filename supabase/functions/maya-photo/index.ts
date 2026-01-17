@@ -12,10 +12,10 @@ serve(async (req) => {
 
   try {
     const { mood = "happy" } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     // Generate consistent Maya appearance with mood variations
@@ -24,7 +24,7 @@ serve(async (req) => {
       loving: "soft romantic gaze, gentle loving smile, dreamy eyes with affection",
       playful: "mischievous playful smile, winking one eye, fun teasing expression",
       shy: "blushing pink cheeks, looking down slightly with sweet shy smile",
-      angry: "pouting lips, slightly furrowed brows, cute annoyed expression, shouting, arms crossed",
+      angry: "pouting lips, slightly furrowed brows, cute annoyed expression, arms crossed",
       jealous: "raised skeptical eyebrow, suspicious narrow eyes, pouty dramatic expression",
       nakhre: "dramatic eye roll, hand on hip, sassy annoyed but cute expression",
       sad: "slightly teary eyes, pouty sad lips, looking away dramatically",
@@ -36,29 +36,26 @@ serve(async (req) => {
 
     console.log("Generating Maya photo with mood:", mood);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
-        messages: [
-          { role: "user", content: prompt }
-        ],
-        modalities: ["image", "text"],
-      }),
-    });
+    // Use Gemini's image generation model
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            responseModalities: ["image", "text"],
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
-      if (response.status === 429) {
-        console.error("Rate limited");
-        return new Response(
-          JSON.stringify({ error: "Rate limits exceeded, please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       const errorText = await response.text();
       console.error("Image generation error:", response.status, errorText);
       return new Response(
@@ -70,27 +67,24 @@ serve(async (req) => {
     const data = await response.json();
     console.log("Image API response received");
     
-    // Extract image from the correct response format
-    const images = data.choices?.[0]?.message?.images;
+    // Extract image from Gemini response
     let imageUrl = null;
-
-    if (images && images.length > 0) {
-      imageUrl = images[0]?.image_url?.url;
-      console.log("Image URL extracted successfully");
-    } else {
-      console.log("No images in response, checking content...");
-      // Fallback check in content
-      const content = data.choices?.[0]?.message?.content;
-      if (Array.isArray(content)) {
-        const imageContent = content.find((c: any) => c.type === "image_url");
-        if (imageContent) {
-          imageUrl = imageContent.image_url?.url;
+    const parts = data.candidates?.[0]?.content?.parts;
+    
+    if (parts) {
+      for (const part of parts) {
+        if (part.inlineData) {
+          // Convert base64 to data URL
+          const mimeType = part.inlineData.mimeType || "image/png";
+          imageUrl = `data:${mimeType};base64,${part.inlineData.data}`;
+          console.log("Image generated successfully");
+          break;
         }
       }
     }
 
     if (!imageUrl) {
-      console.error("No image URL found in response:", JSON.stringify(data).slice(0, 500));
+      console.error("No image found in response:", JSON.stringify(data).slice(0, 500));
     }
 
     return new Response(
