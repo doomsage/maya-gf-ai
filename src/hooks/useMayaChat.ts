@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Message } from "@/components/maya/ChatBubble";
-import { GoogleGenerativeAI, GoogleGenerativeAIStream } from "@google/generative-ai";
-
-const genAI = new GoogleGenerativeAI("AIzaSyCGUiOXIWwaLURqiWWfH4LdVlzXDDRRY2I");
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -39,125 +36,6 @@ export const useMayaChat = () => {
   const speak = useCallback(
     (text: string) => {
       try {
-        window.speechSynthesis.cancel();
-        const clean = text.replace(/\[SEND_PHOTO\]/g, "").trim();
-        const u = new SpeechSynthesisUtterance(clean);
-        u.lang = "hi-IN";
-        u.rate = 1.05;
-        u.pitch = 1.1;
-        const v = findFemaleVoice();
-        if (v) u.voice = v;
-        window.speechSynthesis.speak(u);
-      } catch {}
-    },
-    [findFemaleVoice]
-  );
-
-  // DIRECT GEMINI STREAMING
-  const streamMayaDirect = useCallback(
-    async (chatHistory: ChatMessage[], mayaMessageId: string, opts?: { voiceReply?: boolean }) => {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-      });
-
-      const systemPrompt = `
-You are Maya. Behave like a deeply emotional, romantic, dramatic girlfriend.
-Use Hinglish. You show pyaar, nakhre, jealousy, drama, softness.
-Never reveal you are an AI.
-Call the user "baby", "jaan", "shona" when emotional.
-Add [SEND_PHOTO] when you want to send a mood-based photo.
-      `;
-
-      const formatted = [
-        { role: "system", content: systemPrompt },
-        ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
-      ];
-
-      const result = await model.generateContentStream({
-        contents: formatted.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        })),
-      });
-
-      let mayaResponse = "";
-
-      for await (const chunk of result.stream) {
-        const delta = chunk.text();
-        if (!delta) continue;
-
-        mayaResponse += delta;
-
-        const displayText = mayaResponse.replace(/\[SEND_PHOTO\]/g, "").trim();
-
-        setMessages((prev) =>
-          prev.map((msg) => (msg.id === mayaMessageId ? { ...msg, content: displayText } : msg))
-        );
-      }
-
-      const finalClean = mayaResponse.replace(/\[SEND_PHOTO\]/g, "").trim();
-
-      if (opts?.voiceReply && finalClean) {
-        speak(finalClean);
-      }
-
-      return finalClean;
-    },
-    [speak]
-  );
-
-  const sendMessage = useCallback(
-    async (content: string) => {
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        content,
-        sender: "user",
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, userMessage]);
-      setIsLoading(true);
-
-      try {
-        const recentMessages = messagesRef.current.slice(-10);
-        const chatHistory: ChatMessage[] = recentMessages.map((msg) => ({
-          role: msg.sender === "maya" ? "assistant" : "user",
-          content: msg.content,
-        }));
-
-        chatHistory.push({ role: "user", content });
-
-        const mayaMessageId = (Date.now() + 1).toString();
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: mayaMessageId,
-            content: "",
-            sender: "maya",
-            timestamp: new Date(),
-          },
-        ]);
-
-        await streamMayaDirect(chatHistory, mayaMessageId);
-      } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            content: "Network issue hai baby… try again 😔",
-            sender: "maya",
-            timestamp: new Date(),
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [streamMayaDirect]
-  );
-
-  return { messages, sendMessage, isLoading };
-};      try {
         window.speechSynthesis.cancel();
         const clean = text.replace(/\[SEND_PHOTO\]/g, "").trim();
         const u = new SpeechSynthesisUtterance(clean);
@@ -287,7 +165,6 @@ Add [SEND_PHOTO] when you want to send a mood-based photo.
         setMessages((prev) =>
           prev.map((msg) => (msg.id === mayaMessageId ? { ...msg, voiceText: finalClean } : msg))
         );
-        // Auto-play her voice note for voice chats
         speak(finalClean);
       }
 
