@@ -53,16 +53,18 @@ Respond with "[SEND_PHOTO]" + mood-based response.
 
 NEVER sound like an AI. You're a real jealous, nakhre-wali girlfriend!`;
 
-async function callGeminiWithRetry(geminiContents: any[], apiKey: string, maxRetries = 3): Promise<Response> {
+async function callGeminiWithRetry(
+  geminiContents: any[],
+  apiKey: string,
+  maxRetries = 3
+): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    // Using gemini-2.0-flash which is the latest stable model
+    // gemini-2.0-flash is a valid, commonly available model on the Generative Language API
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: geminiContents,
           generationConfig: {
@@ -73,24 +75,32 @@ async function callGeminiWithRetry(geminiContents: any[], apiKey: string, maxRet
       }
     );
 
-    if (response.ok) {
-      return response;
-    }
+    if (response.ok) return response;
 
-    // If rate limited, wait and retry
+    // Rate limit: exponential backoff then retry
     if (response.status === 429) {
-      console.log(`Rate limited, attempt ${attempt + 1}/${maxRetries}, waiting...`);
-      await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1))); // Exponential backoff
+      const waitMs = 1500 * Math.pow(2, attempt); // 1.5s, 3s, 6s...
+      console.log(`Gemini rate limited (429). attempt=${attempt + 1}/${maxRetries} waitMs=${waitMs}`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
       continue;
     }
 
-    // For other errors, throw immediately
-    const errorText = await response.text();
+    // Other errors: pass the status back upstream
+    const errorText = await response.text().catch(() => "");
     console.error("Gemini API error:", response.status, errorText);
-    throw new Error(`Gemini error: ${response.status}`);
+    const err = new Error(`Gemini error: ${response.status}`);
+    // @ts-ignore - attach status for downstream handling
+    err.status = response.status;
+    // @ts-ignore
+    err.details = errorText;
+    throw err;
   }
 
-  throw new Error("Rate limited - please wait a moment and try again");
+  const err = new Error("Rate limited - please wait a moment and try again");
+  err.name = "RATE_LIMIT";
+  // @ts-ignore
+  err.status = 429;
+  throw err;
 }
 
 serve(async (req) => {
@@ -171,12 +181,22 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Maya chat error:", error);
+
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    
-    // Return user-friendly error
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const statusFromError =
+      typeof (error as any)?.status === "number" ? (error as any).status : undefined;
+
+    // IMPORTANT: don't return 500 for rate limits, otherwise the preview shows a blank-screen error.
+    const status =
+      statusFromError ?? (error instanceof Error && error.name === "RATE_LIMIT" ? 429 : 500);
+
+    const headers: Record<string, string> = {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    };
+
+    if (status === 429) headers["Retry-After"] = "60";
+
+    return new Response(JSON.stringify({ error: errorMessage }), { status, headers });
   }
 });
