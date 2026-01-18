@@ -55,8 +55,9 @@ NEVER sound like an AI. You're a real jealous, nakhre-wali girlfriend!`;
 
 async function callGeminiWithRetry(geminiContents: any[], apiKey: string, maxRetries = 3): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Using gemini-2.0-flash which is the latest stable model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
       {
         method: "POST",
         headers: {
