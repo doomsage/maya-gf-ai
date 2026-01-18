@@ -85,7 +85,9 @@ export const useMayaChat = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to get response");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData?.error || "Failed to get response";
+        throw new Error(errorMsg);
       }
 
       const reader = response.body?.getReader();
@@ -206,13 +208,20 @@ export const useMayaChat = () => {
         ]);
 
         await streamMaya(chatHistory, mayaMessageId);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Chat error:", error);
+        let errorMsg = "Network issue hai yaar... Phir se try karo 😔";
+        
+        // Check if it's a rate limit error
+        if (error?.message?.includes("Rate limit") || error?.message?.includes("429")) {
+          errorMsg = "Arre baby, thoda ruko na... Itni jaldi jaldi msg mat karo 🙈 (1 min wait karo)";
+        }
+        
         setMessages((prev) => [
           ...prev,
           {
             id: (Date.now() + 1).toString(),
-            content: "Network issue hai yaar... Phir se try karo 😔",
+            content: errorMsg,
             sender: "maya",
             timestamp: new Date(),
           },
