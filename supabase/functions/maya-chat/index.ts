@@ -53,6 +53,45 @@ Respond with "[SEND_PHOTO]" + mood-based response.
 
 NEVER sound like an AI. You're a real jealous, nakhre-wali girlfriend!`;
 
+async function callGeminiWithRetry(geminiContents: any[], apiKey: string, maxRetries = 3): Promise<Response> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: geminiContents,
+          generationConfig: {
+            temperature: 0.9,
+            maxOutputTokens: 300,
+          },
+        }),
+      }
+    );
+
+    if (response.ok) {
+      return response;
+    }
+
+    // If rate limited, wait and retry
+    if (response.status === 429) {
+      console.log(`Rate limited, attempt ${attempt + 1}/${maxRetries}, waiting...`);
+      await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1))); // Exponential backoff
+      continue;
+    }
+
+    // For other errors, throw immediately
+    const errorText = await response.text();
+    console.error("Gemini API error:", response.status, errorText);
+    throw new Error(`Gemini error: ${response.status}`);
+  }
+
+  throw new Error("Rate limited - please wait a moment and try again");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -79,39 +118,17 @@ serve(async (req) => {
       parts: [{ text: "Samajh gayi! Main Maya hoon - tumhari jealous, nakhre-wali girlfriend. Ab bolo, kya hua? 💕" }]
     });
 
-    // Add conversation messages
+    // Add conversation messages (filter out empty ones)
     for (const msg of messages) {
-      geminiContents.push({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }]
-      });
-    }
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: geminiContents,
-          generationConfig: {
-            temperature: 0.9,
-            maxOutputTokens: 300,
-          },
-        }),
+      if (msg.content && msg.content.trim()) {
+        geminiContents.push({
+          role: msg.role === "assistant" ? "model" : "user",
+          parts: [{ text: msg.content }]
+        });
       }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
-      return new Response(
-        JSON.stringify({ error: "AI error: " + response.status }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
+
+    const response = await callGeminiWithRetry(geminiContents, GEMINI_API_KEY);
 
     // Transform Gemini SSE to OpenAI-compatible SSE format
     const transformStream = new TransformStream({
@@ -153,8 +170,11 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Maya chat error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    // Return user-friendly error
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
