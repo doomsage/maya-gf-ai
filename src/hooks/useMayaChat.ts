@@ -16,6 +16,7 @@ export const useMayaChat = () => {
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
 
   const messagesRef = useRef<Message[]>(messages);
   useEffect(() => {
@@ -85,8 +86,18 @@ export const useMayaChat = () => {
       });
 
       if (!response.ok) {
+        const retryAfterHeader = response.headers.get("Retry-After");
+        const retryAfterSec = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+
         const errorData = await response.json().catch(() => ({}));
         const errorMsg = errorData?.error || "Failed to get response";
+
+        if (response.status === 429) {
+          const sec = Number.isFinite(retryAfterSec) && retryAfterSec ? retryAfterSec : 60;
+          setCooldownUntil(Date.now() + sec * 1000);
+          throw new Error(`Rate limited - wait ${sec}s`);
+        }
+
         throw new Error(errorMsg);
       }
 
@@ -177,6 +188,20 @@ export const useMayaChat = () => {
 
   const sendMessage = useCallback(
     async (content: string) => {
+      if (Date.now() < cooldownUntil) {
+        const sec = Math.max(1, Math.ceil((cooldownUntil - Date.now()) / 1000));
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            content: `Baby, ${sec}s ruk jao… phir message karna.`,
+            sender: "maya",
+            timestamp: new Date(),
+          },
+        ]);
+        return;
+      }
+
       const userMessage: Message = {
         id: Date.now().toString(),
         content,
